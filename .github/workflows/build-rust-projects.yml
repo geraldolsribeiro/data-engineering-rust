@@ -1,0 +1,53 @@
+name: Build Rust projects
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build all Cargo projects
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            **/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build every Rust project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t manifests < <(find . -name Cargo.toml \
+            -not -path '*/target/*' \
+            -not -path './.git/*' \
+            -print | sort)
+
+          if [[ ${#manifests[@]} -eq 0 ]]; then
+            echo "No Cargo.toml files found. Add a Cargo project to build."
+            exit 0
+          fi
+
+          for manifest in "${manifests[@]}"; do
+            project_dir="$(dirname "$manifest")"
+            echo "::group::Building ${project_dir}"
+            cargo build --manifest-path "$manifest" --locked
+            echo "::endgroup::"
+          done
